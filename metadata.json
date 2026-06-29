@@ -1,0 +1,6 @@
+{
+  "name": "Quản lý Chi tiêu Hoàng Uyên",
+  "description": "Ứng dụng quản lý chi tiêu gia đình dành riêng cho Hoàng và Uyên, kết nối cơ sở dữ liệu Supabase",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

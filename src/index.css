@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,700;1,700&display=swap');
+
+@theme {
+  --font-sans: "Quicksand", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #FDFCF0;
+  color: #334155;
+}
+
+/* Glass & Pastel styling */
+.pastel-mint {
+  background-color: #DFF9F2;
+}
+
+.pastel-pink {
+  background-color: #FFECF1;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+}
+
+.bottom-nav-shadow {
+  box-shadow: 0 -4px 15px rgba(0,0,0,0.03);
+}
+
+.card-shadow {
+  box-shadow: 0 8px 30px rgba(0,0,0,0.04);
+}
