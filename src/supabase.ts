@@ -144,6 +144,39 @@ export async function deleteTransaction(id: string | number): Promise<any> {
 }
 
 /**
+ * Helper to update a transaction amount in the database.
+ */
+export async function updateTransactionAmount(id: string | number, amount: number): Promise<any> {
+  let keys: string[] = ['id', 'created_at', 'spender', 'category', 'amount', 'note', 'image_url', 'transaction_type'];
+  try {
+    const { data } = await supabase.from('transactions').select('*').limit(1);
+    if (data && data[0]) {
+      keys = Object.keys(data[0]);
+    }
+  } catch (e) {
+    console.warn('Error fetching sample row for keys:', e);
+  }
+
+  const payload: any = {};
+  if (keys.includes('amount')) payload.amount = amount;
+  else if (keys.includes('so_tien')) payload.so_tien = amount;
+  else payload.amount = amount;
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .update(payload)
+    .eq('id', id)
+    .select();
+
+  if (error) {
+    console.error('Transaction amount update failed:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+/**
  * Helper to fetch categories from Supabase
  */
 export async function getCategories(): Promise<Category[]> {
