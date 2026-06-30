@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Transaction, Category } from '../types';
-import { addTransaction } from '../supabase';
-import { Sparkles, PiggyBank, RefreshCw, PlusCircle, Coins, ArrowUpRight, TrendingUp, Landmark, AlertTriangle, ArrowRight, Loader2, Check } from 'lucide-react';
+import { addTransaction, updateTransactionAmount } from '../supabase';
+import { Sparkles, PiggyBank, RefreshCw, PlusCircle, Coins, ArrowUpRight, TrendingUp, Landmark, AlertTriangle, ArrowRight, Loader2, Check, Edit2, CheckCircle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface CommonFundsTabProps {
@@ -29,6 +29,9 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
   const [submittingDeposit, setSubmittingDeposit] = useState(false);
   const [depositSuccess, setDepositSuccess] = useState(false);
   const [depositError, setDepositError] = useState<string | null>(null);
+  const [editingDepositId, setEditingDepositId] = useState<string | number | null>(null);
+  const [editingDepositAmountStr, setEditingDepositAmountStr] = useState('');
+  const [savingDepositId, setSavingDepositId] = useState<string | number | null>(null);
 
   // Identify logged in spouse
   const loggedInSpender = currentUser?.user_metadata?.display_name || 
@@ -159,6 +162,46 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
       return;
     }
     setDepositAmountStr(amount.toLocaleString('vi-VN'));
+  };
+
+  const handleStartEditDeposit = (item: Transaction) => {
+    if (!item.id) return;
+    setEditingDepositId(item.id);
+    setEditingDepositAmountStr(item.amount.toLocaleString('vi-VN'));
+  };
+
+  const handleEditDepositAmountChange = (val: string) => {
+    const amount = parseMoneyInput(val);
+    if (!amount) {
+      setEditingDepositAmountStr('');
+      return;
+    }
+    setEditingDepositAmountStr(amount.toLocaleString('vi-VN'));
+  };
+
+  const handleCancelEditDeposit = () => {
+    setEditingDepositId(null);
+    setEditingDepositAmountStr('');
+  };
+
+  const handleSaveDepositAmount = async (id: string | number) => {
+    const amount = parseMoneyInput(editingDepositAmountStr);
+    if (!amount || amount <= 0) {
+      alert('Vui lòng nhập số tiền nạp hợp lý!');
+      return;
+    }
+
+    setSavingDepositId(id);
+    try {
+      await updateTransactionAmount(id, amount);
+      handleCancelEditDeposit();
+      await onRefresh();
+    } catch (err) {
+      console.error('Deposit amount update error:', err);
+      alert('Không thể sửa số tiền nạp. Vui lòng thử lại!');
+    } finally {
+      setSavingDepositId(null);
+    }
   };
 
   return (
@@ -433,9 +476,9 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
               return (
                 <div
                   key={item.id || idx}
-                  className="bg-white rounded-2xl p-3.5 border border-stone-100 shadow-xs flex items-center justify-between"
+                  className="bg-white rounded-2xl p-3.5 border border-stone-100 shadow-xs flex items-center justify-between gap-2"
                 >
-                  <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-3 min-w-0 flex-1">
                     <div
                       className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
                         isHoang ? 'bg-emerald-100 text-emerald-700' : 'bg-pink-100 text-pink-700'
@@ -443,9 +486,9 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
                     >
                       {isHoang ? 'H' : 'U'}
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center space-x-1.5 flex-wrap gap-y-0.5">
-                        <span className="font-bold text-stone-800 text-xs">{item.notes}</span>
+                        <span className="font-bold text-stone-800 text-xs truncate max-w-[150px]">{item.notes}</span>
                         <span
                           className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase ${
                             isDeposit
@@ -471,9 +514,55 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
                       </span>
                     </div>
                   </div>
-                  <span className={`font-bold text-xs ${isDeposit ? 'text-emerald-600' : 'text-stone-800'}`}>
-                    {isDeposit ? '+' : '-'}{formatVND(item.amount)}
-                  </span>
+                  {editingDepositId === item.id ? (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <input
+                        type="text"
+                        value={editingDepositAmountStr}
+                        onChange={(e) => handleEditDepositAmountChange(e.target.value)}
+                        className="w-24 bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1 text-right text-xs font-extrabold text-emerald-700 focus:outline-hidden focus:ring-2 focus:ring-emerald-200"
+                        inputMode="numeric"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => item.id && handleSaveDepositAmount(item.id)}
+                        disabled={savingDepositId === item.id}
+                        className="p-1.5 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:opacity-60"
+                        title="Lưu số tiền nạp"
+                      >
+                        {savingDepositId === item.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEditDeposit}
+                        className="p-1.5 rounded-full bg-stone-50 text-stone-400 hover:bg-stone-100"
+                        title="Hủy"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`font-bold text-xs ${isDeposit ? 'text-emerald-600' : 'text-stone-800'}`}>
+                        {isDeposit ? '+' : '-'}{formatVND(item.amount)}
+                      </span>
+                      {isDeposit && item.id && (
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditDeposit(item)}
+                          className="p-1.5 rounded-full text-stone-300 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                          title="Sửa số tiền nạp"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
