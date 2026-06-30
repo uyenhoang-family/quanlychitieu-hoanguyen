@@ -21,6 +21,9 @@ const PRESETS = [
   { label: '2M', value: 2000000 },
 ];
 
+const PARTY_SESSION_COST = 350000;
+const SPENDING_LIMIT_STORAGE_KEY = 'hoang_uyen_common_fund_spending_limits_v1';
+
 export default function CommonFundsTab({ transactions, categories, loading, onRefresh, currentUser }: CommonFundsTabProps) {
   const [showDepositForm, setShowDepositForm] = useState(false);
   const [depositFund, setDepositFund] = useState('');
@@ -32,6 +35,8 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
   const [editingDepositId, setEditingDepositId] = useState<string | number | null>(null);
   const [editingDepositAmountStr, setEditingDepositAmountStr] = useState('');
   const [savingDepositId, setSavingDepositId] = useState<string | number | null>(null);
+  const [activeDepositEditorFund, setActiveDepositEditorFund] = useState<string | null>(null);
+  const [spendingLimitEnabled, setSpendingLimitEnabled] = useState<Record<string, boolean>>({});
 
   // Identify logged in spouse
   const loggedInSpender = currentUser?.user_metadata?.display_name || 
@@ -47,6 +52,17 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
     }
   }, [sharedFunds, depositFund]);
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SPENDING_LIMIT_STORAGE_KEY);
+      if (saved) {
+        setSpendingLimitEnabled(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.warn('Error loading spending limit preferences:', e);
+    }
+  }, []);
+
   const formatVND = (num: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
   };
@@ -59,6 +75,33 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
   const parseMoneyInput = (value: string) => {
     const cleanNum = value.replace(/[^0-9]/g, '');
     return cleanNum ? parseInt(cleanNum, 10) : 0;
+  };
+
+  const normalizeText = (value: string) => {
+    return value
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  };
+
+  const isPartyFund = (name: string) => {
+    const normalized = normalizeText(name);
+    return normalized.includes('nhau') || normalized.includes('an nhau');
+  };
+
+  const getFundLimitKey = (fund: Category) => String(fund.id || fund.name);
+
+  const toggleSpendingLimit = (fund: Category) => {
+    const key = getFundLimitKey(fund);
+    setSpendingLimitEnabled((current) => {
+      const next = { ...current, [key]: !current[key] };
+      try {
+        localStorage.setItem(SPENDING_LIMIT_STORAGE_KEY, JSON.stringify(next));
+      } catch (e) {
+        console.warn('Error saving spending limit preferences:', e);
+      }
+      return next;
+    });
   };
 
   // Process stats for all common funds
@@ -362,6 +405,10 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
         ) : (
           fundsStats.map((fund, index) => {
             const hasOverdraft = fund.balance < 0;
+            const limitKey = getFundLimitKey(fund.category);
+            const isLimitEnabled = Boolean(spendingLimitEnabled[limitKey]);
+            const partySessionsLeft = Math.max(0, Math.floor(fund.balance / PARTY_SESSION_COST));
+            const spouseCallout = loggedInSpender === 'HoÃ ng' ? 'chồng ơi' : 'vợ ơi';
             return (
               <motion.div
                 key={fund.category.id}
@@ -405,7 +452,20 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
                     <span className="text-[9px] text-emerald-700 font-bold flex items-center gap-0.5">
                       <Landmark className="w-2.5 h-2.5" /> Tổng nạp
                     </span>
-                    <span className="text-xs font-extrabold text-emerald-800 mt-0.5 block">{formatVND(fund.totalDeposited)}</span>
+                    <div className="mt-0.5 flex items-center justify-between gap-2">
+                      <span className="text-xs font-extrabold text-emerald-800 block">{formatVND(fund.totalDeposited)}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveDepositEditorFund(activeDepositEditorFund === fund.category.name ? null : fund.category.name);
+                          handleCancelEditDeposit();
+                        }}
+                        className="p-1 rounded-full bg-white/70 text-emerald-600 hover:bg-white transition-colors"
+                        title="Sửa tiền nạp vào quỹ"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="bg-rose-50/50 p-2.5 rounded-xl border border-rose-100/40">
@@ -415,6 +475,102 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
                     <span className="text-xs font-extrabold text-rose-800 mt-0.5 block">{formatVND(fund.totalSpent)}</span>
                   </div>
                 </div>
+
+                <AnimatePresence>
+                  {activeDepositEditorFund === fund.category.name && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: 'auto' }}
+                      exit={{ opacity: 0, y: -6, height: 0 }}
+                      className="mb-4 overflow-hidden"
+                    >
+                      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700">
+                            Sửa các lần nạp
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveDepositEditorFund(null);
+                              handleCancelEditDeposit();
+                            }}
+                            className="p-1 rounded-full text-emerald-500 hover:bg-white"
+                            title="Đóng"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {fund.transactions.filter((item) => item.transaction_type === 'thu').length === 0 ? (
+                          <p className="text-[10px] font-semibold text-stone-400 py-1">
+                            Quỹ này chưa có khoản nạp nào.
+                          </p>
+                        ) : (
+                          fund.transactions
+                            .filter((item) => item.transaction_type === 'thu')
+                            .map((item) => (
+                              <div
+                                key={item.id}
+                                className="bg-white rounded-xl p-2.5 flex items-center justify-between gap-2 border border-emerald-50"
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-700 truncate max-w-[150px]">
+                                    {item.notes || 'Khoản nạp quỹ'}
+                                  </p>
+                                  <p className="text-[9px] text-slate-400 font-semibold">
+                                    {item.spender} · {item.created_at
+                                      ? new Date(item.created_at).toLocaleDateString('vi-VN', {
+                                          day: '2-digit',
+                                          month: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })
+                                      : 'Vừa xong'}
+                                  </p>
+                                </div>
+
+                                {editingDepositId === item.id ? (
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <input
+                                      type="text"
+                                      value={editingDepositAmountStr}
+                                      onChange={(e) => handleEditDepositAmountChange(e.target.value)}
+                                      className="w-24 bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1 text-right text-xs font-extrabold text-emerald-700 focus:outline-hidden focus:ring-2 focus:ring-emerald-200"
+                                      inputMode="numeric"
+                                      autoFocus
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => item.id && handleSaveDepositAmount(item.id)}
+                                      disabled={savingDepositId === item.id}
+                                      className="p-1.5 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:opacity-60"
+                                      title="Lưu"
+                                    >
+                                      {savingDepositId === item.id ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : (
+                                        <CheckCircle className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditDeposit(item)}
+                                    className="shrink-0 flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1.5 text-[10px] font-extrabold text-emerald-700 hover:bg-emerald-100"
+                                  >
+                                    <span>{formatVND(item.amount)}</span>
+                                    <Edit2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            ))
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* Progress bar representing Fund Health (Balance percentage over total deposited) */}
                 <div className="space-y-1.5">
@@ -439,6 +595,48 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
                     />
                   </div>
                 </div>
+
+                {isPartyFund(fund.category.name) && (
+                  <div className="mt-3.5 rounded-2xl border border-amber-100 bg-amber-50/60 p-3 space-y-2">
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <div className="min-w-0">
+                        <span className="text-[11px] font-extrabold text-amber-800 block">
+                          Giới hạn chi tiêu
+                        </span>
+                        <span className="text-[9px] font-semibold text-amber-700/70">
+                          Trung bình 350.000 đ / buổi nhậu
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={isLimitEnabled}
+                        onChange={() => toggleSpendingLimit(fund.category)}
+                        className="w-5 h-5 accent-amber-500 shrink-0"
+                      />
+                    </label>
+
+                    <AnimatePresence>
+                      {isLimitEnabled && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          className="rounded-xl bg-white/80 border border-amber-100 p-3"
+                        >
+                          <p className="text-[10px] font-bold text-stone-500">
+                            Số dư còn được phép tiêu
+                          </p>
+                          <p className="text-sm font-extrabold text-amber-800 mt-0.5">
+                            {formatVND(Math.max(0, fund.balance))}
+                          </p>
+                          <p className="text-xs font-extrabold text-slate-700 mt-2 leading-snug">
+                            Tháng này còn nhậu được {partySessionsLeft} lần nữa thôi {spouseCallout}.
+                          </p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
 
                 {/* Contribution details breakdown */}
                 <div className="mt-3.5 pt-3 border-t border-slate-100 flex justify-between text-[10px] text-slate-400 font-semibold">
