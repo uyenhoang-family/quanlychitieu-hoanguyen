@@ -53,6 +53,11 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
     return Math.round((part / total) * 100);
   };
 
+  const parseMoneyInput = (value: string) => {
+    const cleanNum = value.replace(/[^0-9]/g, '');
+    return cleanNum ? parseInt(cleanNum, 10) : 0;
+  };
+
   // Process stats for all common funds
   const fundsStats = sharedFunds.map(fund => {
     const fundTransactions = transactions.filter(t => t.category.toLowerCase().trim() === fund.name.toLowerCase().trim());
@@ -102,7 +107,7 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
 
   const handleDepositSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const amount = parseFloat(depositAmountStr.replace(/,/g, ''));
+    const amount = parseMoneyInput(depositAmountStr);
     if (isNaN(amount) || amount <= 0) {
       setDepositError('Vui lòng nhập số tiền nạp hợp lý!');
       return;
@@ -142,18 +147,18 @@ export default function CommonFundsTab({ transactions, categories, loading, onRe
   };
 
   const handlePresetSelect = (val: number) => {
-    const currentVal = parseFloat(depositAmountStr.replace(/,/g, '')) || 0;
+    const currentVal = parseMoneyInput(depositAmountStr);
     const newVal = currentVal + val;
     setDepositAmountStr(newVal.toLocaleString('vi-VN'));
   };
 
   const handleAmountChange = (val: string) => {
-    const cleanNum = val.replace(/[^0-9]/g, '');
-    if (!cleanNum) {
+    const amount = parseMoneyInput(val);
+    if (!amount) {
       setDepositAmountStr('');
       return;
     }
-    setDepositAmountStr(parseInt(cleanNum, 10).toLocaleString('vi-VN'));
+    setDepositAmountStr(amount.toLocaleString('vi-VN'));
   };
 
   return (
