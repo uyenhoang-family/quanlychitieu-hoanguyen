@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Transaction, Budget, Category } from '../types';
-import { Edit2, TrendingDown, Wallet, CheckCircle, RefreshCw, Eye, EyeOff, Trash2, ShieldAlert, Paperclip, X } from 'lucide-react';
+import { Edit2, TrendingDown, Wallet, RefreshCw, Eye, EyeOff, Trash2, Paperclip, X, CalendarDays, Tags, ReceiptText, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../supabase';
 
@@ -30,6 +30,8 @@ export default function OverviewTab({
   const [showBudgets, setShowBudgets] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | number | null>(null);
+  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
   // Image modal state
   const [selectedReceiptUrl, setSelectedReceiptUrl] = useState<string | null>(null);
@@ -103,6 +105,83 @@ export default function OverviewTab({
   const formatVND = (num: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
   };
+
+  const getTransactionDate = (item: Transaction) => {
+    const date = item.created_at ? new Date(item.created_at) : new Date();
+    return Number.isNaN(date.getTime()) ? new Date() : date;
+  };
+
+  const getDateKey = (item: Transaction) => {
+    const date = getTransactionDate(item);
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatDateTitle = (key: string) => {
+    const date = new Date(`${key}T00:00:00`);
+    return date.toLocaleDateString('vi-VN', {
+      weekday: 'long',
+      day: '2-digit',
+      month: '2-digit',
+    });
+  };
+
+  const formatTransactionTime = (item: Transaction) => {
+    return getTransactionDate(item).toLocaleTimeString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const expenseTimeline = useMemo(() => {
+    const dayMap = new Map<string, Transaction[]>();
+
+    isolatedTransactions
+      .filter((item) => item.transaction_type !== 'thu')
+      .forEach((item) => {
+        const key = getDateKey(item);
+        const existing = dayMap.get(key) || [];
+        existing.push(item);
+        dayMap.set(key, existing);
+      });
+
+    return Array.from(dayMap.entries())
+      .map(([key, items]) => {
+        const sortedItems = [...items].sort(
+          (a, b) => getTransactionDate(b).getTime() - getTransactionDate(a).getTime()
+        );
+        const categoryMap = new Map<string, Transaction[]>();
+
+        sortedItems.forEach((item) => {
+          const categoryName = item.category || 'Chưa phân loại';
+          const existing = categoryMap.get(categoryName) || [];
+          existing.push(item);
+          categoryMap.set(categoryName, existing);
+        });
+
+        const categoryGroups = Array.from(categoryMap.entries())
+          .map(([name, categoryItems]) => ({
+            name,
+            items: categoryItems,
+            total: categoryItems.reduce((sum, item) => sum + item.amount, 0),
+          }))
+          .sort((a, b) => b.total - a.total);
+
+        return {
+          key,
+          label: formatDateTitle(key),
+          items: sortedItems,
+          categories: categoryGroups,
+          total: sortedItems.reduce((sum, item) => sum + item.amount, 0),
+        };
+      })
+      .sort((a, b) => b.key.localeCompare(a.key));
+  }, [isolatedTransactions]);
+
+  const activeDay = expenseTimeline.find((day) => day.key === selectedDateKey) || null;
+  const activeCategory = activeDay?.categories.find((category) => category.name === selectedCategory) || null;
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -379,8 +458,243 @@ export default function OverviewTab({
         )}
       </div>
 
+      {/* Spending timeline */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-stone-800 flex items-center gap-2">
+            <CalendarDays className="w-5 h-5 text-teal-600" />
+            <span>Chi tiêu theo ngày</span>
+          </h3>
+          {expenseTimeline.length > 0 && (
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+              {expenseTimeline.length} ngày
+            </span>
+          )}
+        </div>
+
+        {loading && expenseTimeline.length === 0 ? (
+          <div className="bg-white/50 border border-stone-100 rounded-3xl p-8 text-center text-stone-500">
+            <RefreshCw className="w-6 h-6 mx-auto animate-spin mb-2 text-stone-400" />
+            <p className="text-xs">Đang tải lịch sử chi tiêu...</p>
+          </div>
+        ) : expenseTimeline.length === 0 ? (
+          <div className="bg-white rounded-3xl p-8 text-center border border-stone-100">
+            <ReceiptText className="w-8 h-8 mx-auto mb-2 text-teal-500" />
+            <p className="text-sm text-stone-500 font-semibold">Chưa có khoản chi nào được ghi nhận</p>
+            <p className="text-xs text-stone-400 mt-1">Bấm sang tab "Thêm chi" để ghi chép khoản đầu tiên.</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-2.5">
+              {expenseTimeline.map((day, index) => {
+                const isActive = activeDay?.key === day.key;
+                const colorClass = [
+                  'bg-teal-500 text-white',
+                  'bg-rose-400 text-white',
+                  'bg-amber-400 text-stone-950',
+                  'bg-indigo-400 text-white',
+                ][index % 4];
+
+                return (
+                  <motion.button
+                    key={day.key}
+                    type="button"
+                    layout
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.03 }}
+                    onClick={() => {
+                      setSelectedDateKey(day.key);
+                      setSelectedCategory(null);
+                    }}
+                    className={`${colorClass} rounded-3xl p-4 text-left shadow-sm transition-transform active:scale-[0.99] ${
+                      isActive ? 'ring-4 ring-white border border-stone-900/10' : 'border border-white/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-widest opacity-80">
+                          {day.items.length} khoản chi
+                        </p>
+                        <p className="mt-1 text-lg font-extrabold capitalize truncate">
+                          {day.label}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[11px] font-bold opacity-80">Tổng chi</p>
+                        <p className="text-base font-extrabold">{formatVND(day.total)}</p>
+                      </div>
+                    </div>
+                  </motion.button>
+                );
+              })}
+            </div>
+
+            <AnimatePresence mode="wait">
+              {activeDay && (
+                <motion.div
+                  key={activeDay.key}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="space-y-3"
+                >
+                  <h4 className="text-sm font-extrabold text-stone-800 flex items-center gap-2">
+                    <Tags className="w-4 h-4 text-teal-600" />
+                    <span>Danh mục trong ngày</span>
+                  </h4>
+
+                  <div className="grid grid-cols-1 gap-2">
+                    {activeDay.categories.map((category) => {
+                      const isActive = activeCategory?.name === category.name;
+
+                      return (
+                        <button
+                          key={category.name}
+                          type="button"
+                          onClick={() => setSelectedCategory(category.name)}
+                          className={`w-full rounded-2xl p-3.5 text-left border shadow-xs transition-colors ${
+                            isActive
+                              ? 'bg-teal-50 border-teal-200'
+                              : 'bg-white border-stone-100 hover:border-teal-100'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-extrabold text-sm text-stone-800 truncate">{category.name}</p>
+                              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                                {category.items.length} khoản
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-sm font-extrabold text-stone-800">
+                                {formatVND(category.total)}
+                              </span>
+                              <ChevronRight className={`w-4 h-4 ${isActive ? 'text-teal-600' : 'text-stone-300'}`} />
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence mode="wait">
+              {activeCategory && (
+                <motion.div
+                  key={`${activeDay?.key}-${activeCategory.name}`}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="space-y-3"
+                >
+                  <h4 className="text-sm font-extrabold text-stone-800 flex items-center gap-2">
+                    <ReceiptText className="w-4 h-4 text-teal-600" />
+                    <span>Các khoản chi</span>
+                  </h4>
+
+                  <div className="space-y-2.5">
+                    {activeCategory.items.map((item, index) => {
+                      const isHoang = item.spender === 'HoÃ ng';
+
+                      return (
+                        <motion.div
+                          key={item.id || `${activeCategory.name}-${index}`}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.03 }}
+                          className={`bg-white rounded-2xl p-4 border border-stone-100 shadow-xs relative ${
+                            item.image_url ? 'cursor-pointer hover:border-teal-150' : ''
+                          }`}
+                          onClick={() => {
+                            if (item.image_url) {
+                              setSelectedReceiptUrl(item.image_url);
+                              setSelectedTransaction(item);
+                            }
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div
+                                className={`w-10 h-10 rounded-2xl flex items-center justify-center text-sm font-extrabold shadow-xs shrink-0 ${
+                                  isHoang ? 'bg-emerald-100/80 text-emerald-700' : 'bg-pink-100/80 text-pink-700'
+                                }`}
+                              >
+                                {isHoang ? 'H' : 'U'}
+                              </div>
+
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <p className="font-extrabold text-stone-800 text-sm leading-snug break-words">
+                                    {item.notes || 'Chi tiêu không tên'}
+                                  </p>
+                                  {item.image_url && (
+                                    <span
+                                      title="Đính kèm hóa đơn"
+                                      className={`p-1 rounded-md flex items-center justify-center shrink-0 ${
+                                        isHoang ? 'bg-teal-50 text-teal-600' : 'bg-pink-50 text-pink-600'
+                                      }`}
+                                    >
+                                      <Paperclip className="w-3 h-3" />
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-stone-400 font-bold mt-1">
+                                  {formatTransactionTime(item)} · {item.spender}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="font-extrabold text-sm text-red-600">
+                                -{formatVND(item.amount)}
+                              </span>
+
+                              {item.id && (
+                                <div className="relative" onClick={(e) => e.stopPropagation()}>
+                                  {deleteConfirmId === item.id ? (
+                                    <div className="absolute right-0 top-7 bg-red-500 text-white flex items-center space-x-1 p-1 rounded-lg text-[9px] font-bold z-10 shadow-md">
+                                      <button
+                                        onClick={() => handleDeleteTransaction(item.id!)}
+                                        className="px-1.5 py-0.5 hover:bg-red-600 rounded"
+                                      >
+                                        Xóa
+                                      </button>
+                                      <button
+                                        onClick={() => setDeleteConfirmId(null)}
+                                        className="px-1 py-0.5 bg-stone-700/50 hover:bg-stone-700 rounded"
+                                      >
+                                        Hủy
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => setDeleteConfirmId(item.id!)}
+                                      className="p-1.5 rounded-full text-stone-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                      title="Xóa khoản chi này"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
+        )}
+      </div>
+
       {/* 5 Recent Transactions */}
-      <div className="space-y-3">
+      <div className="hidden">
         <h3 className="text-base font-bold text-stone-800 flex items-center space-x-2">
           <span>⏰</span>
           <span>5 Khoản chi gần nhất</span>
@@ -575,4 +889,3 @@ export default function OverviewTab({
     </div>
   );
 }
-
