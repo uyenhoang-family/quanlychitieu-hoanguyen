@@ -23,6 +23,7 @@ export default function SettingsTab({ currentUser, categories, onRefresh, onLogo
   const [editingCatName, setEditingCatName] = useState<string>('');
   const [editingCatType, setEditingCatType] = useState<'chung' | 'hoang' | 'uyen'>('chung');
   const [deletingCatId, setDeletingCatId] = useState<string | number | null>(null);
+  const [openActionCatId, setOpenActionCatId] = useState<string | number | null>(null);
 
   // Sub-tab state for category divisions
   const [activeSubTab, setActiveSubTab] = useState<'personal' | 'shared'>('personal');
@@ -61,6 +62,7 @@ export default function SettingsTab({ currentUser, categories, onRefresh, onLogo
     setEditingCatId(cat.id);
     setEditingCatName(cat.name);
     setEditingCatType(cat.type);
+    setOpenActionCatId(null);
   };
 
   const handleCancelEdit = () => {
@@ -84,6 +86,7 @@ export default function SettingsTab({ currentUser, categories, onRefresh, onLogo
     try {
       await deleteCategory(catId);
       setDeletingCatId(null);
+      setOpenActionCatId(null);
       await onRefresh();
     } catch (err) {
       console.error('Error deleting category:', err);
@@ -100,6 +103,128 @@ export default function SettingsTab({ currentUser, categories, onRefresh, onLogo
   const myPersonalType = displayName === 'Hoàng' ? 'hoang' : 'uyen';
   const personalCategories = categories.filter(c => c.type === myPersonalType);
   const sharedCategories = categories.filter(c => c.type === 'chung');
+
+  const renderCategoryRow = (cat: Category, shared = false) => {
+    const catId = cat.id;
+    const isEditing = editingCatId === catId;
+    const isOpen = openActionCatId === catId;
+
+    if (isEditing) {
+      return (
+        <div
+          key={catId}
+          className="flex items-center justify-between p-3 rounded-2xl bg-[#F8F9FA] transition-all"
+        >
+          <div className="flex-1 flex items-center space-x-2">
+            <input
+              type="text"
+              value={editingCatName}
+              onChange={(e) => setEditingCatName(e.target.value)}
+              className="bg-white border border-stone-200 px-2 py-1 rounded-xl text-xs font-bold text-slate-700 w-full focus:outline-hidden focus:ring-2 focus:ring-teal-400"
+              placeholder="Đổi tên..."
+            />
+            <select
+              value={editingCatType}
+              onChange={(e: any) => setEditingCatType(e.target.value)}
+              className="bg-white border border-stone-200 px-2 py-1 rounded-xl text-[10px] font-bold text-slate-600"
+            >
+              <option value="hoang">Hoàng</option>
+              <option value="uyen">Uyên</option>
+              <option value="chung">Chung</option>
+            </select>
+            <button
+              onClick={() => catId && handleSaveEdit(catId)}
+              className="p-1 text-emerald-600 hover:text-emerald-700"
+              title="Lưu"
+            >
+              <CheckCircle className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleCancelEdit}
+              className="p-1 text-stone-400 hover:text-stone-600"
+              title="Hủy"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={catId} className="relative overflow-hidden rounded-2xl bg-[#F8F9FA]">
+        <div className="absolute inset-y-0 right-0 flex items-stretch">
+          <button
+            type="button"
+            onClick={() => handleStartEdit(cat)}
+            className="w-14 bg-teal-500 text-white flex flex-col items-center justify-center gap-1 text-[10px] font-extrabold"
+            title="Sửa danh mục"
+          >
+            <Edit2 className="w-4 h-4" />
+            <span>Sửa</span>
+          </button>
+          {deletingCatId === catId ? (
+            <div className="w-24 bg-red-500 text-white flex flex-col items-center justify-center gap-1 text-[10px] font-extrabold">
+              <button onClick={() => catId && handleDeleteCat(catId)} className="px-2 py-0.5 rounded-md bg-red-600">
+                Xóa
+              </button>
+              <button onClick={() => setDeletingCatId(null)} className="px-2 py-0.5 rounded-md bg-white/20">
+                Hủy
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setDeletingCatId(catId || null)}
+              className="w-14 bg-red-500 text-white flex flex-col items-center justify-center gap-1 text-[10px] font-extrabold"
+              title="Xóa danh mục"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Xóa</span>
+            </button>
+          )}
+        </div>
+
+        <motion.div
+          drag={catId ? 'x' : false}
+          dragConstraints={{ left: -112, right: 0 }}
+          dragElastic={0.04}
+          animate={{ x: isOpen ? -112 : 0 }}
+          transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+          onDragStart={() => {
+            setDeletingCatId(null);
+            if (catId) setOpenActionCatId(catId);
+          }}
+          onDragEnd={(_, info) => {
+            if (!catId) return;
+            setOpenActionCatId(info.offset.x < -42 || info.velocity.x < -350 ? catId : null);
+          }}
+          onClick={() => {
+            if (isOpen) setOpenActionCatId(null);
+          }}
+          className="relative z-10 flex items-center justify-between p-3 rounded-2xl bg-[#F8F9FA] hover:bg-[#F1F3F5] transition-colors touch-pan-y"
+          style={{ touchAction: 'pan-y' }}
+        >
+          <div className="flex items-center space-x-2 min-w-0">
+            <span className="text-sm shrink-0">
+              {shared ? '🏡' : cat.type === 'hoang' ? '👨🏻‍💻' : '👩🏻‍🎨'}
+            </span>
+            <span className="text-xs font-bold text-slate-700 truncate">{cat.name}</span>
+          </div>
+
+          <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 ${
+            shared
+              ? 'bg-slate-200/60 text-slate-600'
+              : cat.type === 'hoang'
+              ? 'bg-teal-100 text-teal-700'
+              : 'bg-pink-100 text-pink-700'
+          }`}>
+            {shared ? 'Chung' : cat.type === 'hoang' ? 'Hoàng' : 'Uyên'}
+          </span>
+        </motion.div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6 pb-24 animate-fadeIn">
@@ -272,8 +397,25 @@ export default function SettingsTab({ currentUser, categories, onRefresh, onLogo
           </button>
         </div>
 
-        {/* List render */}
+        {/* Swipeable list render */}
         <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1">
+          {activeSubTab === 'personal' ? (
+            personalCategories.length === 0 ? (
+              <div className="text-center py-6 text-stone-400 text-xs">Chưa có danh mục cá nhân nào.</div>
+            ) : (
+              personalCategories.map((cat) => renderCategoryRow(cat))
+            )
+          ) : (
+            sharedCategories.length === 0 ? (
+              <div className="text-center py-6 text-stone-400 text-xs">Chưa có danh mục chung nào.</div>
+            ) : (
+              sharedCategories.map((cat) => renderCategoryRow(cat, true))
+            )
+          )}
+        </div>
+
+        {/* Legacy list render */}
+        <div className="hidden">
           {activeSubTab === 'personal' ? (
             personalCategories.length === 0 ? (
               <div className="text-center py-6 text-stone-400 text-xs">Chưa có danh mục cá nhân nào.</div>
