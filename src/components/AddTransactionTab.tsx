@@ -98,7 +98,7 @@ export default function AddTransactionTab({ categories, onSuccess, setActiveTab,
       // Upload file if selected
       if (receiptFile) {
         setUploadStatus('Đang tải ảnh hóa đơn lên hệ thống...');
-        imageUrl = await uploadReceiptImage(receiptFile);
+        imageUrl = await uploadReceiptImage(receiptFile, currentUser?.id);
       }
 
       setUploadStatus('Đang lưu thông tin giao dịch...');
