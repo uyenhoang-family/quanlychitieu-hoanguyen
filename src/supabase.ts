@@ -304,16 +304,26 @@ export async function deleteCategory(id: string | number): Promise<any> {
 /**
  * Helper to upload a receipt photo to Supabase storage bucket `receipts`
  */
-export async function uploadReceiptImage(file: File): Promise<string> {
-  const fileExt = file.name.split('.').pop() || 'jpg';
+export async function uploadReceiptImage(file: File, userId?: string): Promise<string> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const ownerId = userId || user?.id;
+
+  if (!ownerId) {
+    throw new Error('Bạn cần đăng nhập lại trước khi tải ảnh hóa đơn.');
+  }
+
+  const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
   const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${fileExt}`;
-  const filePath = `${fileName}`;
+  const filePath = `${ownerId}/${fileName}`;
 
   // Upload file
   const { data, error } = await supabase.storage
     .from('receipts')
     .upload(filePath, file, {
       cacheControl: '3600',
+      contentType: file.type || 'image/jpeg',
       upsert: false
     });
 
